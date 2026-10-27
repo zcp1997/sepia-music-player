@@ -1,0 +1,11 @@
+# XcodeGen 生成物（以 project.yml 为准）
+Sepia.xcodeproj/
+Sepia/Info.plist
+
+# 构建产物
+build/
+DerivedData/
+Payload/
+*.ipa
+
+.DS_Store

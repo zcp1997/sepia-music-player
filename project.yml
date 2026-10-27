@@ -1,0 +1,38 @@
+name: Sepia
+
+options:
+  bundleIdPrefix: com.zcp
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    # CI 用运行序号和 commit 覆盖这两个值
+    CURRENT_PROJECT_VERSION: "1"
+    SEPIA_COMMIT: dev
+    SWIFT_VERSION: "5.0"
+
+targets:
+  Sepia:
+    type: application
+    platform: iOS
+    sources:
+      - Sepia
+    info:
+      path: Sepia/Info.plist
+      properties:
+        CFBundleDisplayName: Sepia
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        SepiaCommit: $(SEPIA_COMMIT)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zcp.sepia
+        TARGETED_DEVICE_FAMILY: "1"
+    scheme: {}
