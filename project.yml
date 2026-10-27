@@ -2,6 +2,8 @@ name: Sepia
 
 options:
   bundleIdPrefix: com.zcp
+  # 系统控件（左滑删除、编辑按钮、文件选择器）显示中文
+  developmentLanguage: zh-Hans
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
@@ -31,6 +33,12 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # 锁屏后继续播放
+        UIBackgroundModes:
+          - audio
+        # 让 Documents（日志）出现在「文件」App → 我的 iPhone
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.zcp.sepia

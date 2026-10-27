@@ -26,6 +26,9 @@ jobs:
           sudo xcode-select -s "$XCODE_APP"
           xcodebuild -version
 
+      - name: Core tests
+        run: scripts/test-core.sh
+
       - name: Generate Xcode project
         run: |
           curl -sSL -o "$RUNNER_TEMP/xcodegen.zip" \
