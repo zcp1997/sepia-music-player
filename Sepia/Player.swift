@@ -16,6 +16,7 @@ final class Player: ObservableObject {
     @Published private(set) var isPlaying = false
     /// 播放页的状态提示，如“正在从 iCloud 下载…”
     @Published private(set) var status: String?
+    @Published private(set) var mode: PlayMode
 
     let progress = PlaybackProgress()
     let lyrics = LyricsLoader()
@@ -23,10 +24,10 @@ final class Player: ObservableObject {
     var current: Song? { index.map { queue[$0] } }
 
     private let player = AVPlayer()
+    /// 上一首 / 下一首按它走；随机模式下是打乱后的顺序
+    private var order = PlayOrder(count: 0, current: 0, shuffled: false)
     private var loadGeneration = 0
     private var downloadTimer: Timer?
-    /// 从头部缓存起播时的数据源（AVURLAsset 只弱引用 delegate，这里要持有）
-    private var cachedSource: HeadCacheSource?
     private var itemObservation: NSKeyValueObservation?
     /// 新歌加载好之后要跳到的位置（恢复上次进度、或加载前就拖了进度条）
     private var pendingStart: TimeInterval?
@@ -40,15 +41,14 @@ final class Player: ObservableObject {
     private enum Keys {
         static let lastSongID = "lastSongID"
         static let lastPosition = "lastPosition"
+        static let playMode = "playMode"
     }
 
     init() {
+        mode = UserDefaults.standard.string(forKey: Keys.playMode).flatMap(PlayMode.init(rawValue:)) ?? .sequential
         configureSession()
         observePlayer()
         configureRemoteCommands()
-        HeadCache.shared.isInUse = { [weak self] song in
-            self?.isCurrentOrUpcoming(song) ?? false
-        }
     }
 
     // MARK: - 控制
@@ -56,7 +56,17 @@ final class Player: ObservableObject {
     func play(_ songs: [Song], at index: Int) {
         guard songs.indices.contains(index) else { return }
         queue = songs
+        rebuildOrder(current: index)
         load(index: index, startAt: 0, autoplay: true)
+    }
+
+    /// 顺序 → 单曲循环 → 随机 → 顺序
+    func cycleMode() {
+        mode = mode.next
+        UserDefaults.standard.set(mode.rawValue, forKey: Keys.playMode)
+        Log.info("播放模式：\(mode.rawValue)")
+        if let index { rebuildOrder(current: index) }
+        prefetchUpcoming()
     }
 
     func togglePlayPause() {
@@ -117,6 +127,7 @@ final class Player: ObservableObject {
             let index = songs.firstIndex(where: { $0.id == id })
         else { return }
         queue = songs
+        rebuildOrder(current: index)
         load(index: index, startAt: UserDefaults.standard.double(forKey: Keys.lastPosition), autoplay: false)
     }
 
@@ -128,9 +139,28 @@ final class Player: ObservableObject {
     // MARK: - 加载
 
     private func step(by delta: Int) {
-        guard let index, !queue.isEmpty else { return }
-        let target = ((index + delta) % queue.count + queue.count) % queue.count
+        guard index != nil, let target = order.step(by: delta) else { return }
         load(index: target, startAt: 0, autoplay: true)
+    }
+
+    /// 队列或模式变了：从当前这首重新排顺序（随机时其余歌重新打乱）
+    private func rebuildOrder(current: Int) {
+        order = PlayOrder(count: queue.count, current: current, shuffled: mode == .shuffle)
+    }
+
+    /// 一首播完：单曲循环从头再播，其他模式下一首
+    private func playbackDidEnd() {
+        guard mode == .repeatOne else {
+            next()
+            return
+        }
+        player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.isPlaying else { return }
+                self.startPlayback()
+                self.updateNowPlaying()
+            }
+        }
     }
 
     private func load(index newIndex: Int, startAt start: TimeInterval, autoplay: Bool) {
@@ -141,7 +171,6 @@ final class Player: ObservableObject {
         endBackgroundTask()
         itemObservation = nil
         player.replaceCurrentItem(with: nil)
-        cachedSource = nil
 
         let song = queue[newIndex]
         index = newIndex
@@ -160,31 +189,7 @@ final class Player: ObservableObject {
             return
         }
 
-        // 不在本机但有头部缓存：先从缓存起播，同时让系统下载完整文件
-        if let source = HeadCache.shared.makeSource(for: song), let asset = source.makeAsset() {
-            Log.info("从头部缓存起播：\(song.id)")
-            status = "正在后台下载完整文件…"
-            source.onMismatch = { [weak self] in
-                self?.reloadAfterCacheMismatch(song)
-            }
-            cachedSource = source
-            attachItem(for: song, cachedAsset: asset)
-            downloadTimer = CloudFile.waitForDownload(song.url, timeout: 300) { [weak self] isLocal in
-                guard let self, generation == self.loadGeneration else { return }
-                self.downloadTimer = nil
-                if isLocal {
-                    self.status = nil
-                    source.fullFileReady()
-                } else {
-                    self.status = "下载超时，请检查网络后重试"
-                    source.fail()
-                    Log.error("下载超时：\(song.id)")
-                }
-            }
-            return
-        }
-
-        // 不在本机也没有缓存：请系统下载，下完再播
+        // 不在本机：请系统下载，下完再播
         Log.info("等待 iCloud 下载：\(song.id)")
         status = "正在从 iCloud 下载…"
         beginBackgroundTask()
@@ -204,11 +209,9 @@ final class Player: ObservableObject {
         }
     }
 
-    /// cachedAsset 为 nil 时播放本机文件
-    private func attachItem(for song: Song, cachedAsset: AVURLAsset? = nil) {
-        // 本机文件开精确时长：保证 VBR MP3 拖动后时间准确（歌词对齐依赖它）。
-        // 头部缓存起播时不能开，否则播放器要先读完整个文件
-        let asset = cachedAsset ?? AVURLAsset(url: song.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+    private func attachItem(for song: Song) {
+        // 精确时长：保证 VBR MP3 拖动后时间准确（歌词对齐依赖它）
+        let asset = AVURLAsset(url: song.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         let item = AVPlayerItem(asset: asset)
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             DispatchQueue.main.async { self?.itemStatusChanged(item) }
@@ -220,20 +223,6 @@ final class Player: ObservableObject {
         }
         prefetchUpcoming()
         updateNowPlaying()
-        // 文件在本机：顺手建立 / 核对头部缓存，以后文件被系统释放了也能秒开
-        if cachedAsset == nil { HeadCache.shared.store(song) }
-    }
-
-    /// 完整文件和头部缓存对不上：丢掉缓存，改从本机文件接着播
-    private func reloadAfterCacheMismatch(_ song: Song) {
-        HeadCache.shared.remove(song)
-        guard let index, queue[index].id == song.id else { return }
-        load(index: index, startAt: progress.currentTime, autoplay: isPlaying)
-    }
-
-    private func isCurrentOrUpcoming(_ song: Song) -> Bool {
-        guard let index, !queue.isEmpty else { return false }
-        return (0...min(2, queue.count - 1)).contains { queue[(index + $0) % queue.count].id == song.id }
     }
 
     private func itemStatusChanged(_ item: AVPlayerItem) {
@@ -260,11 +249,10 @@ final class Player: ObservableObject {
         }
     }
 
-    /// 提前让系统下载队列里接下来的 2 首（连同歌词），顺序播放时不用等
+    /// 提前让系统下载接下来要播的 2 首（连同歌词；随机模式按打乱后的顺序），切歌时不用等
     private func prefetchUpcoming() {
-        guard let index, queue.count > 1 else { return }
-        for offset in 1...min(2, queue.count - 1) {
-            let song = queue[(index + offset) % queue.count]
+        for index in order.upcoming(2) {
+            let song = queue[index]
             CloudFile.startDownload(song.url)
             if let lyricsURL = song.lyricsURL { CloudFile.startDownload(lyricsURL) }
         }
@@ -280,7 +268,7 @@ final class Player: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, (note.object as? AVPlayerItem) === self.player.currentItem else { return }
-            self.next()
+            self.playbackDidEnd()
         }
     }
 
@@ -319,13 +307,7 @@ final class Player: ObservableObject {
 
     private func startPlayback() {
         activateSession()
-        if cachedSource != nil {
-            // 头部缓存起播：后面的数据还没到，play() 可能判断“缓冲跟不上”而迟迟不开始；
-            // playImmediately 有多少播多少，数据断了仍会自动等待再续播
-            player.playImmediately(atRate: 1)
-        } else {
-            player.play()
-        }
+        player.play()
     }
 
     private func activateSession() {

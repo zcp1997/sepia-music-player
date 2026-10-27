@@ -4,8 +4,13 @@ import Foundation
 final class Library: ObservableObject {
     @Published private(set) var rootURL: URL?
     @Published private(set) var songs: [Song] = [] {
-        didSet { songsByID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) }
+        didSet {
+            songsByID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            folders = songs.folders
+        }
     }
+    /// 「全部」页的筛选标签：歌曲所在的子文件夹
+    private(set) var folders: [String] = []
     @Published private(set) var isScanning = false
     @Published private(set) var data = LibraryData.empty
     /// 音乐文件夹里的 sepia-library.json 读完（或确认读不到）之前不允许修改，避免用旧数据覆盖它
@@ -60,11 +65,25 @@ final class Library: ObservableObject {
                 if root == self.rootURL {
                     self.songs = songs
                     Log.info("扫描完成：\(songs.count) 首")
-                    HeadCache.shared.fillMissing(songs)
+                    self.downloadMissingIfNeeded()
                 }
                 self.isScanning = false
                 completion?()
             }
+        }
+    }
+
+    /// 设置里「保持全部歌曲在本机」开关存在 UserDefaults 的键
+    static let keepAllLocalKey = "keepAllLocal"
+
+    /// 开关打开时：请系统在后台下载还不在本机的歌和歌词（被系统移除的也会补回来）
+    func downloadMissingIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: Self.keepAllLocalKey) else { return }
+        let urls = songs.flatMap { [$0.url, $0.lyricsURL].compactMap { $0 } }
+        DispatchQueue.global(qos: .utility).async {
+            let missing = urls.filter { !CloudFile.isLocal($0) }
+            missing.forEach { CloudFile.startDownload($0) }
+            if !missing.isEmpty { Log.info("保持全部在本机：请求下载 \(missing.count) 个文件") }
         }
     }
 

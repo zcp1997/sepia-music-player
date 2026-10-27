@@ -2,8 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var library: Library
-    @ObservedObject private var cache = HeadCache.shared
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(Library.keepAllLocalKey) private var keepAllLocal = false
 
     var body: some View {
         NavigationStack {
@@ -19,25 +19,12 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("已缓存", value: "\(cache.entryCount) 首 · \(formattedCacheSize)")
-                    if let done = cache.preheatDone {
-                        HStack {
-                            ProgressView(value: Double(done), total: Double(max(cache.preheatTotal, 1)))
-                            Text("\(done)/\(cache.preheatTotal)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundColor(.secondary)
+                    Toggle("保持全部歌曲在本机", isOn: $keepAllLocal)
+                        .onChange(of: keepAllLocal) { isOn in
+                            if isOn { library.downloadMissingIfNeeded() }
                         }
-                        Button("停止预热", role: .destructive) { cache.cancelPreheat() }
-                    } else {
-                        Button("预热全部歌曲") { cache.preheat(library.songs) }
-                            .disabled(library.songs.isEmpty)
-                    }
-                    Button("清空缓存", role: .destructive) { cache.clear() }
-                        .disabled(cache.entryCount == 0)
-                } header: {
-                    Text("起播缓存")
                 } footer: {
-                    Text("每首歌在本机保留开头约 1MB，不在本机的歌也能立即起播。预热会逐首从 iCloud 下载、截取开头后释放完整文件，进行中请保持 App 在前台。")
+                    Text("打开后，每次扫描完都会请系统在后台下载还不在本机的歌和歌词；被系统移除的歌，下次打开 App 也会补回来。会占用和曲库一样大的空间。")
                 }
 
                 Section {
@@ -54,9 +41,5 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private var formattedCacheSize: String {
-        ByteCountFormatter.string(fromByteCount: Int64(cache.totalBytes), countStyle: .file)
     }
 }

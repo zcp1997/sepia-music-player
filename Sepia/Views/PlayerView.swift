@@ -52,7 +52,7 @@ struct PlayerView: View {
         }
     }
 
-    /// 喜欢 / 加入歌单
+    /// 喜欢 / 播放模式 / 加入歌单
     private var songActions: some View {
         HStack {
             if let song = player.current {
@@ -63,6 +63,16 @@ struct PlayerView: View {
                     Image(systemName: isFavorite ? "heart.fill" : "heart")
                         .foregroundColor(isFavorite ? .pink : .primary)
                 }
+                .disabled(!library.isDataReady)
+                Spacer()
+                Button(action: player.cycleMode) {
+                    HStack(spacing: 6) {
+                        Image(systemName: player.mode.symbol)
+                        Text(player.mode.title)
+                            .font(.footnote)
+                    }
+                    .foregroundColor(.primary)
+                }
                 Spacer()
                 Button {
                     songToAdd = song
@@ -70,10 +80,10 @@ struct PlayerView: View {
                     Image(systemName: "text.badge.plus")
                         .foregroundColor(.primary)
                 }
+                .disabled(!library.isDataReady)
             }
         }
         .font(.title2)
-        .disabled(!library.isDataReady)
         .padding(.horizontal, 32)
         .frame(height: 32)
     }
@@ -145,5 +155,23 @@ private struct ProgressSlider: View {
         guard seconds.isFinite, seconds > 0 else { return "0:00" }
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private extension PlayMode {
+    var title: String {
+        switch self {
+        case .sequential: return "顺序播放"
+        case .repeatOne: return "单曲循环"
+        case .shuffle: return "随机播放"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .sequential: return "repeat"
+        case .repeatOne: return "repeat.1"
+        case .shuffle: return "shuffle"
+        }
     }
 }

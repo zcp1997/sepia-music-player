@@ -41,12 +41,10 @@ sepia-music-player/
 │   │   ├── LibraryScanner.swift# 递归扫描、iCloud 占位文件、字幕匹配
 │   │   ├── CloudFile.swift     # iCloud 下载状态、触发下载、等待下载完成
 │   │   ├── LyricsParser.swift  # LyricLine；SRT + LRC 解析、编码识别、当前行定位
-│   │   ├── LibraryFile.swift   # Playlist / LibraryData；sepia-library.json 编解码与编辑操作
-│   │   └── HeadCacheMath.swift # HeadCacheEntry；ID3 长度、请求区间拆分、缓存文件名哈希
-│   ├── Library.swift           # 文件夹授权、书签、扫描；喜欢 / 歌单的读写与合并
-│   ├── Player.swift            # AVPlayer、队列、预取、三种起播路径、锁屏控制
+│   │   └── LibraryFile.swift   # Playlist / LibraryData；sepia-library.json 编解码与编辑操作
+│   ├── Library.swift           # 文件夹授权、书签、扫描、保持全部在本机；喜欢 / 歌单的读写与合并
+│   ├── Player.swift            # AVPlayer、队列、预取、锁屏控制
 │   ├── LyricsLoader.swift      # 当前歌词：等 iCloud 下载、后台解析
-│   ├── HeadCache.swift         # 头部缓存、预热；HeadCacheSource（AVAssetResourceLoaderDelegate）
 │   ├── FolderPicker.swift      # UIDocumentPickerViewController 选文件夹
 │   ├── Log.swift               # os.Logger + Documents/sepia.log
 │   ├── AppPaths.swift          # Application Support 目录
@@ -57,7 +55,7 @@ sepia-music-player/
 │       ├── PlaylistViews.swift # 歌单列表、歌单详情、加入歌单
 │       ├── PlayerView.swift    # 播放页：歌词、♥、加入歌单、进度条、控制
 │       ├── LyricsView.swift    # 网易云式歌词（UITableView 封装）
-│       └── SettingsView.swift  # 文件夹、起播缓存 / 预热、版本
+│       └── SettingsView.swift  # 文件夹、保持全部歌曲在本机、版本
 ├── Tests/CoreTests/            # Core 测试（main.swift 驱动，不依赖 XCTest）
 ├── scripts/
 │   ├── test-core.sh            # swiftc 编译并运行 Core 测试（本机与 CI 共用）
@@ -75,7 +73,7 @@ sepia-music-player/
 - 歌曲列表不持久化，每次启动/回前台/下拉刷新重新扫描。
 - 歌曲 ID = 相对根文件夹的路径（天然唯一，解决重名）。
 - 字幕匹配：同目录同名，`.srt` > `.lrc`。
-- 列表：全部 / 喜欢 / 歌单；显示文件名（去扩展名）；既不在本地也无头部缓存的歌显示 ☁ 图标。
+- 列表：全部 / 喜欢 / 歌单；显示文件名（去扩展名）；还不在本机的歌显示 ☁ 图标。
 
 ### 3.2 播放
 - 队列 = 点击时所在的列表；列表循环。
@@ -120,39 +118,22 @@ sepia-music-player/
 ### 3.5 界面（3 页）
 - 主页：顶部分段 [全部 | 喜欢 | 歌单] + 底部迷你播放条。
 - 播放页：歌名 / 歌词 / 进度条 / ⏮ ⏯ ⏭ / ♥ / 加入歌单。
-- 设置：更换文件夹、重新扫描、预热缓存（带进度）、缓存占用与清空、版本号（含 commit）。
+- 设置：更换文件夹、重新扫描、保持全部歌曲在本机、版本号（含 commit）。
 
-## 4. 起播优化（iCloud 预缓存）
+## 4. 减少起播等待
 
-事实：iCloud Drive **没有“只下载前一部分”的公开 API**。文件要么完整在本地，要么是占位符；读取时系统整文件下载完才放行。其他 App “等几秒”就是在等整文件下载。因此“开头”只能由 App 自己留一份。
+事实：iCloud Drive **没有“只下载前一部分”的公开 API**。文件要么完整在本机，要么是占位符；读取时系统整文件下载完才放行。其他 App “等几秒”就是在等整文件下载。而下载过的文件会一直留在本机，只有存储空间不足时系统才会移除（iOS 16 没有「始终保留下载」选项）。
 
-三层方案：
+现在的做法：
 
-1. **预取下一首**（已在 M2 实现）：当前歌开播即对队列后 2 首调 `startDownloadingUbiquitousItem`。顺序播放基本零等待；也避免锁屏自动切到未下载的歌时 App 因不出声被挂起（等待下载期间另申请后台任务时间兜底）。
-2. **头部缓存 + 自定义 ResourceLoader**（核心）
-   - 文件只要完整在本地出现过一次（播放 / 预取 / 预热），后台截取开头约 1MB 音频存到 `Application Support/HeadCache/`（排除备份）。截取时**跳过 ID3v2 标签**（内嵌封面可能几百 KB），记录文件大小、时长、修改时间。
-   - 点一首不在本地的歌：`AVURLAsset` 用自定义 scheme，`AVAssetResourceLoaderDelegate` 呈现“去掉 ID3 的虚拟文件”；开头字节从缓存给 → 立即开播；同时触发系统下载；下载完成后 loader 无缝改从完整文件读。下载慢于播放时只会中途短暂缓冲。
-   - 文件大小/修改时间变化 → 缓存作废重建。
-3. **一键预热**（设置里）：逐首下载 → 截头部 → 若原本不在本地则 `evictUbiquitousItem` 释放本地副本。全库秒开，只多占头部缓存空间。
+1. **预取下一首**：当前歌开播即对队列后 2 首（连同歌词）调 `startDownloadingUbiquitousItem`。顺序播放基本零等待；也避免锁屏自动切到未下载的歌时 App 因不出声被挂起（等待下载期间另申请后台任务时间兜底）。
+2. **「保持全部歌曲在本机」开关**（设置里，默认关）：打开后每次扫描完（启动、回前台、下拉刷新）都对还不在本机的歌和歌词调 `startDownloadingUbiquitousItem`，由系统在后台下载；被系统移除的歌下次打开 App 自动补回。代价是占用和曲库一样大的空间。
 
-播放决策：
-1. 完整文件已在本地 → 直接 `AVPlayerItem(url:)`（最稳，开精确时长）。
-2. 不在本地但有头部缓存 → ResourceLoader 路径。
-3. 都没有 → 触发下载，显示“下载中”，完成后播放。
+播放路径只有两种：在本机 → 直接 `AVPlayerItem`（开精确时长）；不在本机 → 触发下载，显示“正在从 iCloud 下载…”，下完再播。列表里 ☁ 表示这首还不在本机。
 
-空间：1MB/首（320kbps ≈ 25 秒，128kbps ≈ 60 秒），1000 首 ≈ 1GB；常量可调。
+> 曾实现过“头部缓存”：每首歌在沙盒保留开头约 1MB，用 `AVAssetResourceLoaderDelegate` 先从缓存起播、同时下载完整文件，另有一键预热。2026-10-27 用户试用后决定删除：下载过的文件本来就留在本机，头部缓存只对“下载过又被系统移除”的歌有用，却是全项目最复杂、最难验证的部分；从没下载过的歌它也帮不上（要先完整下载一次才能建立缓存）。代码见 git 历史 `ccc40e9`。
 
-实现要点：
-- 只缓存 mp3 / aac / flac（数据顺序排列，有开头就能起播）；m4a、wav 不缓存。
-- 缓存路径用 `playImmediately(atRate:)` 起播，避免 AVPlayer 因“后面数据还没到”判断缓冲不足而不开始。
-- 缓存路径不开精确时长（否则要先读完整个文件），VBR 无 Xing 头的 MP3 在这一首里拖动可能略有偏差；下次从本机文件播放就精确了。
-- 完整文件下载好后数据源核对文件大小，不一致则丢弃缓存、改从本机文件在当前位置接着播。
-
-需真机验证：
-- AVPlayer 起播前是否请求文件末尾（ID3v1 等）——数据源对每个超出头部的请求都会写日志 `等待完整文件：… 请求 x..<y`；若起播前就出现这条，说明需要再缓存末尾几十 KB。
-- `evictUbiquitousItem` 对文件选择器授权的外部文件夹是否生效。
-- 仅对 MP3 / FLAC 有效；moov 在末尾的 m4a 退化为路径 3。
-- 系统设置“蜂窝网络 → iCloud 云盘”关闭时，流量下不会下载完整文件。
+注意：系统设置“蜂窝网络 → iCloud 云盘”关闭时，用流量不会下载。
 
 ## 5. 工程与 CI
 
@@ -173,12 +154,12 @@ sepia-music-player/
 每步都产出可安装 IPA 并在真机验证。
 
 - [x] **M1 骨架 + CI**：空壳 App 显示版本/build/commit；“下载 IPA → 自签 → iOS 16.6.1 启动”链路已在真机验证（2026-10-27）。
-M2–M5 代码已在本机完成（2026-10-27），通过 `scripts/test-core.sh` 与 `scripts/typecheck.sh`；等推送后 CI 编译、真机验证再打勾。
+M2–M5 已推送（2026-10-27）。真机：TrollStore 安装需临时签名（见第 5 节），修好后选文件夹、扫描、播放等大部分功能用户确认正常；逐项确认后再打勾。
 
 - [ ] **M2 音乐库 + 基础播放**：选文件夹、扫描、播放、上下首、进度条、后台与锁屏、恢复上次播放、预取后 2 首、日志。Core 测试接入 CI。
 - [ ] **M3 歌词**：SRT/LRC 解析（编码识别、多时间戳、offset、翻译行）+ 网易云式歌词页。
 - [ ] **M4 喜欢 + 歌单 + 存储**：音乐文件夹 `sepia-library.json` + 沙盒副本，取较新；读完前禁止修改。
-- [ ] **M5 起播优化**：头部缓存 + ResourceLoader、预热、☁ 图标。
+- [ ] **M5 减少起播等待**：「保持全部歌曲在本机」开关、☁ 图标（头部缓存已删除，见第 4 节）。
 
 ### M2 真机验证清单
 - [ ] 选 iCloud 文件夹后列出歌曲，子文件夹显示在歌名下方，有歌词的右侧显示引号图标
@@ -204,11 +185,28 @@ M2–M5 代码已在本机完成（2026-10-27），通过 `scripts/test-core.sh`
 - [ ] 音乐文件夹里出现 `sepia-library.json`；删掉 App 重装、重新选文件夹后喜欢和歌单都还在
 
 ### M5 真机验证清单
-- [ ] 设置 →「预热全部歌曲」能跑完，进度正常，已缓存数量和大小增加
-- [ ] 在「文件」App 里对某首歌「移除下载」后，列表里它没有 ☁（有缓存），点它立即出声，播放页显示“正在后台下载完整文件…”，之后消失
-- [ ] 上面这种情况下一直播到 25 秒之后不卡（完整文件已接上）
-- [ ] 日志里看起播前有没有 `等待完整文件` 请求文件末尾（见第 4 节）
-- [ ] 从没下载过、也没缓存的歌显示 ☁，点了等下载后播放
+- [ ] 不在本机的歌显示 ☁，点了显示“正在从 iCloud 下载…”，下完自动播放
+- [ ] 设置里打开「保持全部歌曲在本机」，过一会儿下拉刷新，☁ 逐渐消失；日志里有“保持全部在本机：请求下载 N 个文件”
+- [ ] 在「文件」App 里对某首歌「移除下载」，回到 Sepia（触发扫描）后它会重新下载
+
+### 已修复
+- 列表拉到底时最后一首被迷你播放条挡住（播放条改放在 NavigationStack 下方）
+
+### v0.2.0：播放模式与文件夹筛选
+- 播放模式（`Core/PlayOrder.swift`，存 UserDefaults）：
+  - 顺序播放（默认）：按列表顺序，最后一首之后回到第一首。
+  - 单曲循环：播完从头重播；手动上一首 / 下一首仍按列表走。
+  - 随机播放：从当前这首开始把整个列表打乱一遍，放完一轮前不重复；上一首按播放历史退回。预取也按打乱后的顺序。
+  - 播放页 ♥ 和「加入歌单」之间的按钮依次切换，图标旁显示模式名。
+- 「全部」页按子文件夹标签筛选：标签取歌曲所在的子文件夹（完整相对路径，根目录下的歌不算），横向滑动、单选，再点一次取消；筛选后点歌，队列就是筛选结果。
+- 真机验证：
+  - [ ] 三种模式依次切换，杀掉 App 重开后模式保持
+  - [ ] 单曲循环：播完自动重播；随机：一轮内不重复
+  - [ ] 标签筛选：只显示该文件夹的歌；筛选后上下首只在结果里切
+### 想法：CarPlay（暂不开发，2026-10-27 决定）
+- 需要 entitlement `com.apple.developer.carplay-audio`。这个权限正常要向 Apple 申请；TrollStore 会原样保留我们写进 `ci/Sepia.entitlements` 的 entitlements，所以可以自己加，但车机系统认不认没有验证过。
+- 实现：Info.plist 加 CarPlay scene（`CPTemplateApplicationSceneSessionRoleApplication`）+ `CPTemplateApplicationSceneDelegate`，用 `CPListTemplate` 列出全部 / 喜欢 / 歌单 / 文件夹，用系统的 `CPNowPlayingTemplate` 显示正在播放（锁屏控制已接好，可直接复用）。约 200 行；Library / Player 要改成两个 scene 共用的实例。
+- 风险：Info.plist 的 scene 配置写错可能影响手机端启动；只能在车上测（CarPlay Simulator 需要手机连 Mac）。若以后要做，单独出一个版本。
 
 ## 7. 获取 IPA
 

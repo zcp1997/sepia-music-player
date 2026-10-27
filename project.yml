@@ -10,7 +10,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     # CI 用运行序号和 commit 覆盖这两个值
     CURRENT_PROJECT_VERSION: "1"
     SEPIA_COMMIT: dev

@@ -23,10 +23,11 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("歌单", testPlaylists),
     ("歌单文件编解码", testLibraryFileRoundTrip),
     ("取较新的歌单数据", testNewerLibraryData),
-    ("ID3 标签长度", testID3TagSize),
-    ("头部缓存区间拆分", testHeadCacheSplit),
-    ("头部缓存条目", testHeadCacheEntry),
-    ("缓存文件名哈希", testCacheKey),
+    ("顺序播放", testSequentialOrder),
+    ("随机播放", testShuffledOrder),
+    ("播放顺序边界", testPlayOrderEdgeCases),
+    ("播放模式切换", testPlayModeCycle),
+    ("文件夹标签", testFolderTags),
 ]
 
 for test in tests {
