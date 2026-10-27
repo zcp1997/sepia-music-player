@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// 播放页：沉浸式深棕，不随系统深浅色变化（配色见 PlayerPalette）
 struct PlayerView: View {
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: Player
@@ -7,8 +8,8 @@ struct PlayerView: View {
     @State private var songToAdd: Song?
 
     var body: some View {
-        VStack(spacing: 20) {
-            header
+        VStack(spacing: 18) {
+            PlayerHeader(song: player.current) { dismiss() }
 
             LyricsView(lyrics: player.lyrics, progress: player.progress) { time in
                 // 网易云式：点歌词旁的 ▶ 跳到那句并开始播放
@@ -20,134 +21,184 @@ struct PlayerView: View {
             if let status = player.status {
                 Text(status)
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(uiColor: PlayerPalette.secondary))
             }
 
-            songActions
-
-            ProgressSlider(progress: player.progress) { player.seek(to: $0) }
-                .padding(.horizontal, 24)
-
-            HStack(spacing: 48) {
-                Button(action: player.previous) {
-                    Image(systemName: "backward.fill")
-                }
-                Button(action: player.togglePlayPause) {
-                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 64))
-                }
-                Button(action: player.next) {
-                    Image(systemName: "forward.fill")
-                }
+            if let song = player.current {
+                PlayerActions(
+                    isFavorite: library.isFavorite(song),
+                    canEdit: library.isDataReady,
+                    mode: player.mode,
+                    onFavorite: { library.toggleFavorite(song) },
+                    onMode: player.cycleMode,
+                    onAdd: { songToAdd = song }
+                )
             }
-            .font(.title)
-            .foregroundColor(.primary)
+
+            PlaybackScrubber(progress: player.progress) { player.seek(to: $0) }
+
+            PlayerControls(
+                isPlaying: player.isPlaying,
+                onPrevious: player.previous,
+                onTogglePlay: player.togglePlayPause,
+                onNext: player.next
+            )
             .padding(.bottom, 8)
         }
-        .padding(.vertical, 16)
-        .presentationDragIndicator(.visible)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .background(Color(uiColor: PlayerPalette.background).ignoresSafeArea())
+        // 系统的拖动条在深棕底上看不清，PlayerHeader 里自己画一条
+        .presentationDragIndicator(.hidden)
         .sheet(item: $songToAdd) { song in
             PlaylistPicker(song: song)
                 .environmentObject(library)
         }
     }
+}
 
-    /// 喜欢 / 播放模式 / 加入歌单
-    private var songActions: some View {
-        HStack {
-            if let song = player.current {
-                let isFavorite = library.isFavorite(song)
-                Button {
-                    library.toggleFavorite(song)
-                } label: {
-                    Image(systemName: isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(isFavorite ? .pink : .primary)
+struct PlayerHeader: View {
+    let song: Song?
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Capsule()
+                .fill(Color(uiColor: PlayerPalette.track))
+                .frame(width: 36, height: 5)
+            HStack(alignment: .top) {
+                Button(action: onClose) {
+                    Image(systemName: "chevron.down")
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(Color(uiColor: PlayerPalette.secondary))
+                        .frame(width: 44, height: 44)
                 }
-                .disabled(!library.isDataReady)
-                Spacer()
-                Button(action: player.cycleMode) {
-                    HStack(spacing: 6) {
-                        Image(systemName: player.mode.symbol)
-                        Text(player.mode.title)
-                            .font(.footnote)
+                VStack(spacing: 3) {
+                    Text(song?.title ?? "未在播放")
+                        .font(.headline)
+                        .foregroundColor(Color(uiColor: PlayerPalette.text))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                    if let folder = song?.folder, !folder.isEmpty {
+                        Text(folder)
+                            .font(.subheadline)
+                            .foregroundColor(Color(uiColor: PlayerPalette.secondary))
+                            .lineLimit(1)
                     }
-                    .foregroundColor(.primary)
                 }
-                Spacer()
-                Button {
-                    songToAdd = song
-                } label: {
-                    Image(systemName: "text.badge.plus")
-                        .foregroundColor(.primary)
-                }
-                .disabled(!library.isDataReady)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 10)
+                // 和左边按钮等宽，让标题居中
+                Color.clear.frame(width: 44, height: 44)
             }
-        }
-        .font(.title2)
-        .padding(.horizontal, 32)
-        .frame(height: 32)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 44, height: 44)
-            }
-            VStack(spacing: 4) {
-                Text(player.current?.title ?? "未在播放")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let folder = player.current?.folder, !folder.isEmpty {
-                    Text(folder)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 10)
-            // 和左边按钮等宽，让标题居中
-            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, 12)
     }
 }
 
-/// 拖动期间只改本地的 scrubTime，不受播放进度回写影响；松手才真正 seek
-private struct ProgressSlider: View {
+/// 喜欢 / 播放模式 / 加入歌单
+struct PlayerActions: View {
+    let isFavorite: Bool
+    /// 歌单数据还没读完时不能改
+    let canEdit: Bool
+    let mode: PlayMode
+    let onFavorite: () -> Void
+    let onMode: () -> Void
+    let onAdd: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: onFavorite) {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .foregroundColor(Color(uiColor: isFavorite ? PlayerPalette.heart : PlayerPalette.text))
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(!canEdit)
+            Spacer()
+            Button(action: onMode) {
+                HStack(spacing: 5) {
+                    Image(systemName: mode.symbol)
+                        .font(.footnote.weight(.semibold))
+                    Text(mode.title)
+                        .font(.footnote)
+                }
+                .foregroundColor(Color(uiColor: PlayerPalette.amber))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .overlay(Capsule().stroke(Color(uiColor: PlayerPalette.track), lineWidth: 1))
+            }
+            Spacer()
+            Button(action: onAdd) {
+                Image(systemName: "text.badge.plus")
+                    .foregroundColor(Color(uiColor: PlayerPalette.text))
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(!canEdit)
+        }
+        .font(.title3)
+        .padding(.horizontal, 18)
+    }
+}
+
+/// 细轨道 + 小圆点的进度条。拖动期间只改本地的 scrubTime，不受播放进度回写影响；松手才真正 seek
+struct PlaybackScrubber: View {
     @ObservedObject var progress: PlaybackProgress
     let onSeek: (TimeInterval) -> Void
     @State private var scrubTime: TimeInterval?
 
     var body: some View {
+        let duration = progress.duration
+        let time = scrubTime ?? progress.currentTime
+        let fraction = duration > 0 ? CGFloat(min(max(time / duration, 0), 1)) : 0
+        let knob: CGFloat = scrubTime == nil ? 12 : 18
+
         VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { scrubTime ?? progress.currentTime },
-                    set: { scrubTime = $0 }
-                ),
-                in: 0...max(progress.duration, 1),
-                onEditingChanged: { isEditing in
-                    guard !isEditing, let time = scrubTime else { return }
-                    onSeek(time)
-                    scrubTime = nil
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(uiColor: PlayerPalette.track))
+                        .frame(height: 3)
+                    Capsule()
+                        .fill(Color(uiColor: PlayerPalette.amber))
+                        .frame(width: width * fraction, height: 3)
+                    Circle()
+                        .fill(Color(uiColor: PlayerPalette.highlight))
+                        .frame(width: knob, height: knob)
+                        .offset(x: width * fraction - knob / 2)
                 }
-            )
-            .disabled(progress.duration == 0)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard duration > 0, width > 0 else { return }
+                            scrubTime = Double(min(max(value.location.x / width, 0), 1)) * duration
+                        }
+                        .onEnded { _ in
+                            if let target = scrubTime { onSeek(target) }
+                            scrubTime = nil
+                        }
+                )
+            }
+            .frame(height: 28)
 
             HStack {
-                Text(format(scrubTime ?? progress.currentTime))
+                Text(format(time))
                 Spacer()
-                Text(format(progress.duration))
+                Text(format(duration))
             }
             .font(.caption.monospacedDigit())
-            .foregroundColor(.secondary)
+            .foregroundColor(Color(uiColor: PlayerPalette.secondary))
+        }
+        .padding(.horizontal, 24)
+        .animation(.easeOut(duration: 0.12), value: scrubTime == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("播放进度")
+        .accessibilityValue("\(format(time)) / \(format(duration))")
+        .accessibilityAdjustableAction { direction in
+            let step: TimeInterval = direction == .increment ? 10 : -10
+            onSeek(min(max(progress.currentTime + step, 0), duration))
         }
     }
 
@@ -155,6 +206,39 @@ private struct ProgressSlider: View {
         guard seconds.isFinite, seconds > 0 else { return "0:00" }
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// 上一首 / 米白圆形播放键 / 下一首
+struct PlayerControls: View {
+    let isPlaying: Bool
+    let onPrevious: () -> Void
+    let onTogglePlay: () -> Void
+    let onNext: () -> Void
+
+    var body: some View {
+        HStack(spacing: 44) {
+            Button(action: onPrevious) {
+                Image(systemName: "backward.fill")
+                    .font(.title)
+                    .frame(width: 52, height: 52)
+            }
+            Button(action: onTogglePlay) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    // 三角形视觉重心偏左，往右挪一点看起来才居中
+                    .offset(x: isPlaying ? 0 : 2)
+                    .foregroundColor(Color(uiColor: PlayerPalette.background))
+                    .frame(width: 68, height: 68)
+                    .background(Circle().fill(Color(uiColor: PlayerPalette.highlight)))
+            }
+            Button(action: onNext) {
+                Image(systemName: "forward.fill")
+                    .font(.title)
+                    .frame(width: 52, height: 52)
+            }
+        }
+        .foregroundColor(Color(uiColor: PlayerPalette.text))
     }
 }
 

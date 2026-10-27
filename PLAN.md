@@ -48,7 +48,8 @@ sepia-music-player/
 │   ├── FolderPicker.swift      # UIDocumentPickerViewController 选文件夹
 │   ├── Log.swift               # os.Logger + Documents/sepia.log
 │   ├── AppPaths.swift          # Application Support 目录
-│   ├── Assets.xcassets/        # App 图标（单张 1024，由 scripts/make-icon.swift 生成）
+│   ├── Theme.swift             # 配色：Theme（跟随深浅色）、PlayerPalette（播放页固定深棕）
+│   ├── Assets.xcassets/        # App 图标（单张 1024，由 scripts/make-icon.swift 生成）、AccentColor
 │   └── Views/
 │       ├── ContentView.swift   # 根视图：未选文件夹时显示引导
 │       ├── LibraryView.swift   # [全部|喜欢|歌单] + SongList + 迷你播放条
@@ -60,7 +61,8 @@ sepia-music-player/
 ├── scripts/
 │   ├── test-core.sh            # swiftc 编译并运行 Core 测试（本机与 CI 共用）
 │   ├── typecheck.sh            # 借 Mac Catalyst 对整个 App 做 iOS 16 检查（仅本机）
-│   └── make-icon.swift         # 生成 App 图标
+│   ├── make-icon.swift         # 生成 App 图标
+│   └── render-previews.sh      # 把主要界面渲染成 PNG（配合 scripts/previews/main.swift）
 └── .github/workflows/build.yml
 ```
 
@@ -203,6 +205,16 @@ M2–M5 已推送（2026-10-27）。真机：TrollStore 安装需临时签名（
   - [ ] 三种模式依次切换，杀掉 App 重开后模式保持
   - [ ] 单曲循环：播完自动重播；随机：一轮内不重复
   - [ ] 标签筛选：只显示该文件夹的歌；筛选后上下首只在结果里切
+### 界面改版（2026-10-27，方案 B + 沉浸式播放页）
+- 配色取自 App 图标，集中在 `Sepia/Theme.swift`：`Theme` 跟随系统深浅色（主页、歌单、设置、引导页），`PlayerPalette` 固定深棕（播放页、歌词）。系统控件用 `Assets.xcassets/AccentColor`（同值），由 `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME` 指定。
+- 主页：自绘分段控件、暖色标签、每首歌前的首字色块（颜色按文件夹名 FNV 哈希取自 8 种暖色，同一文件夹永远同色）、正在播放那行的音波、迷你播放条带色块。
+- 播放页：深棕底、自绘拖动条、播放模式胶囊、细轨道 + 小圆点进度条（拖动时圆点放大）、米白圆形播放键；当前句歌词亮米白并放大 8%（用 transform，不改行高），翻译浅琥珀，其余变暗。
+- 本机预览：`scripts/render-previews.sh`（组件拼图，List / ScrollView / 歌词表格用等价 SwiftUI 代替）。
+- 真机验证：
+  - [ ] 浅色、深色模式下主页、歌单、设置、引导页配色正常，文字清楚
+  - [ ] 播放页在两种模式下都是深棕；当前句放大不跳行；拖动歌词的中线和 ▶ 看得清
+  - [ ] 进度条拖动、点按跳转都正常；系统弹窗、文件选择器、开关是琥珀棕
+
 ### 想法：CarPlay（暂不开发，2026-10-27 决定）
 - 需要 entitlement `com.apple.developer.carplay-audio`。这个权限正常要向 Apple 申请；TrollStore 会原样保留我们写进 `ci/Sepia.entitlements` 的 entitlements，所以可以自己加，但车机系统认不认没有验证过。
 - 实现：Info.plist 加 CarPlay scene（`CPTemplateApplicationSceneSessionRoleApplication`）+ `CPTemplateApplicationSceneDelegate`，用 `CPListTemplate` 列出全部 / 喜欢 / 歌单 / 文件夹，用系统的 `CPNowPlayingTemplate` 显示正在播放（锁屏控制已接好，可直接复用）。约 200 行；Library / Player 要改成两个 scene 共用的实例。

@@ -74,6 +74,7 @@ scripts/typecheck.sh
 
 - `test-core.sh`：把 `Sepia/Core`（纯 Foundation 逻辑：扫描、歌词解析、歌单数据）和 `Tests/CoreTests` 编译成命令行程序运行，CI 里也会先跑它
 - `typecheck.sh`：借 macOS SDK 里的 Mac Catalyst 框架，按 iOS 16 把整个 App 编译到 SIL 阶段，能抓到类型错误和 iOS 17+ API 误用
+- `render-previews.sh`：同样借 Mac Catalyst，把主页（浅色 / 深色）、播放页、引导页渲染成 PNG（默认输出到 `build/previews/`），改界面后不用装到手机就能先看配色和布局
 - 工程由 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 按 `project.yml` 生成，`.xcodeproj` 不入库
 - 图标由 `scripts/make-icon.swift` 生成
 

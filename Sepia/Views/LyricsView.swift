@@ -21,7 +21,7 @@ struct LyricsView: View {
 
     private func message(_ text: String) -> some View {
         Text(text)
-            .foregroundColor(.secondary)
+            .foregroundColor(Color(uiColor: PlayerPalette.muted))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -191,7 +191,7 @@ final class LyricsUIView: UIView, UITableViewDataSource, UITableViewDelegate {
 
     private func refreshVisibleCells() {
         for indexPath in tableView.indexPathsForVisibleRows ?? [] {
-            (tableView.cellForRow(at: indexPath) as? LyricCell)?.apply(style: style(for: indexPath.row))
+            (tableView.cellForRow(at: indexPath) as? LyricCell)?.apply(style: style(for: indexPath.row), animated: true)
         }
     }
 
@@ -242,18 +242,24 @@ private final class LyricCell: UITableViewCell {
 
     func configure(_ line: LyricLine, style: Style) {
         self.line = line
-        apply(style: style)
+        apply(style: style, animated: false)
     }
 
-    func apply(style: Style) {
+    func apply(style: Style, animated: Bool) {
         guard let line else { return }
         let color: UIColor
+        let translationColor: UIColor
         switch style {
-        case .current: color = .label
-        case .focused: color = .secondaryLabel
-        case .normal: color = .tertiaryLabel
+        case .current:
+            color = PlayerPalette.highlight
+            translationColor = PlayerPalette.amber
+        case .focused:
+            color = PlayerPalette.amber
+            translationColor = PlayerPalette.amber
+        case .normal:
+            color = PlayerPalette.muted
+            translationColor = PlayerPalette.muted
         }
-        // 字号不随状态变化，避免行高跳动
         let text = NSMutableAttributedString(
             string: line.text,
             attributes: [.font: UIFont.systemFont(ofSize: 18, weight: .semibold), .foregroundColor: color]
@@ -261,10 +267,18 @@ private final class LyricCell: UITableViewCell {
         if let translation = line.translation {
             text.append(NSAttributedString(
                 string: "\n" + translation,
-                attributes: [.font: UIFont.systemFont(ofSize: 14, weight: .regular), .foregroundColor: color]
+                attributes: [.font: UIFont.systemFont(ofSize: 14, weight: .regular), .foregroundColor: translationColor]
             ))
         }
         label.attributedText = text
+
+        // 当前句放大用 transform 而不是换字号：不改行高，列表不会跳
+        let transform = style == .current ? CGAffineTransform(scaleX: 1.08, y: 1.08) : .identity
+        if animated {
+            UIView.animate(withDuration: 0.25) { self.label.transform = transform }
+        } else {
+            label.transform = transform
+        }
     }
 }
 
@@ -277,10 +291,10 @@ private final class SeekIndicatorView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        timeLabel.textColor = .secondaryLabel
-        line.backgroundColor = .separator
+        timeLabel.textColor = PlayerPalette.secondary
+        line.backgroundColor = PlayerPalette.track
         playButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
-        playButton.tintColor = .label
+        playButton.tintColor = PlayerPalette.highlight
         addSubview(timeLabel)
         addSubview(line)
         addSubview(playButton)

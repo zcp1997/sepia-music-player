@@ -1,13 +1,21 @@
 import SwiftUI
 
-struct LibraryView: View {
-    private enum Tab: Hashable {
-        case all, favorites, playlists
-    }
+enum LibraryTab: CaseIterable {
+    case all, favorites, playlists
 
+    var title: String {
+        switch self {
+        case .all: return "全部"
+        case .favorites: return "喜欢"
+        case .playlists: return "歌单"
+        }
+    }
+}
+
+struct LibraryView: View {
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: Player
-    @State private var tab = Tab.all
+    @State private var tab = LibraryTab.all
     /// 「全部」页选中的文件夹标签；nil 表示不筛选
     @State private var folder: String?
     @State private var isShowingPlayer = false
@@ -18,8 +26,15 @@ struct LibraryView: View {
         // safeAreaInset 传给里面的列表，列表最后一首会被播放条挡住
         VStack(spacing: 0) {
             navigation
-            if player.current != nil {
-                MiniPlayerBar { isShowingPlayer = true }
+            if let song = player.current {
+                MiniPlayerBar(
+                    song: song,
+                    isPlaying: player.isPlaying,
+                    progress: player.progress,
+                    onOpen: { isShowingPlayer = true },
+                    onTogglePlay: player.togglePlayPause,
+                    onNext: player.next
+                )
             }
         }
         // 新建歌单的输入框弹出键盘时，播放条不跟着顶上来
@@ -39,14 +54,9 @@ struct LibraryView: View {
     private var navigation: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("分类", selection: $tab) {
-                    Text("全部").tag(Tab.all)
-                    Text("喜欢").tag(Tab.favorites)
-                    Text("歌单").tag(Tab.playlists)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                SegmentedTabs(selection: $tab)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
 
                 switch tab {
                 case .all:
@@ -69,12 +79,14 @@ struct LibraryView: View {
                     PlaylistsView()
                 }
             }
+            .background(Theme.background)
             .onChange(of: library.folders) { folders in
                 // 重新扫描后选中的文件夹没了，回到不筛选
                 if let selected = folder, !folders.contains(selected) { folder = nil }
             }
             .navigationTitle(library.rootURL?.lastPathComponent ?? "Sepia")
             .navigationBarTitleDisplayMode(.inline)
+            .themedNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -88,6 +100,34 @@ struct LibraryView: View {
     }
 }
 
+/// [全部 | 喜欢 | 歌单]，自己画而不用系统分段控件，好配合主题色和深色模式
+struct SegmentedTabs: View {
+    @Binding var selection: LibraryTab
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(LibraryTab.allCases, id: \.self) { tab in
+                let isSelected = tab == selection
+                Button {
+                    selection = tab
+                } label: {
+                    Text(tab.title)
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .foregroundColor(isSelected ? Theme.textPrimary : Theme.chipText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? Theme.segmentSelected : Color.clear))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.chipBackground))
+        .animation(.easeOut(duration: 0.15), value: selection)
+    }
+}
+
 /// 文件夹标签：横向滑动，单选；再点一次选中的标签取消筛选
 private struct FolderFilterBar: View {
     let folders: [String]
@@ -95,17 +135,26 @@ private struct FolderFilterBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                chip("全部", isSelected: selection == nil) { selection = nil }
-                ForEach(folders, id: \.self) { folder in
-                    chip(folder, isSelected: selection == folder) {
-                        selection = selection == folder ? nil : folder
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
+            FolderChips(folders: folders, selection: $selection)
+                .padding(.horizontal, 16)
         }
         .padding(.bottom, 8)
+    }
+}
+
+struct FolderChips: View {
+    let folders: [String]
+    @Binding var selection: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            chip("全部", isSelected: selection == nil) { selection = nil }
+            ForEach(folders, id: \.self) { folder in
+                chip(folder, isSelected: selection == folder) {
+                    selection = selection == folder ? nil : folder
+                }
+            }
+        }
     }
 
     private func chip(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -115,8 +164,8 @@ private struct FolderFilterBar: View {
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .foregroundColor(isSelected ? .white : .primary)
-                .background(Capsule().fill(isSelected ? Color.accentColor : Color(.secondarySystemFill)))
+                .foregroundColor(isSelected ? Theme.onAccent : Theme.chipText)
+                .background(Capsule().fill(isSelected ? Theme.accent : Theme.chipBackground))
         }
         .buttonStyle(.plain)
     }
@@ -142,14 +191,17 @@ struct SongList: View {
                 Button {
                     player.play(songs, at: index)
                 } label: {
+                    let isCurrent = song.id == player.current?.id
                     SongRow(
                         song: song,
-                        isCurrent: song.id == player.current?.id,
+                        isCurrent: isCurrent,
+                        isPlaying: isCurrent && player.isPlaying,
                         isFavorite: library.isFavorite(song),
                         // 只对屏幕上可见的行计算（List 是懒加载的）
                         isInCloud: !CloudFile.isLocal(song.url)
                     )
                 }
+                .themedRow()
                 .contextMenu {
                     Group {
                         Button {
@@ -174,11 +226,12 @@ struct SongList: View {
             .onMove(perform: moveAction)
         }
         .listStyle(.plain)
+        .themedListBackground()
         .overlay {
             if songs.isEmpty {
                 if let emptyText {
                     Text(emptyText)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.textSecondary)
                 } else {
                     ProgressView("正在扫描…")
                 }
@@ -205,83 +258,154 @@ struct SongList: View {
     }
 }
 
-private struct SongRow: View {
+struct SongRow: View {
     let song: Song
     let isCurrent: Bool
+    /// 正在出声：音波动起来；暂停时静止
+    let isPlaying: Bool
     let isFavorite: Bool
     /// 还不在本机：点了要先等 iCloud 下载
     let isInCloud: Bool
 
     var body: some View {
         HStack(spacing: 12) {
+            SongTile(title: song.title, folder: song.folder, size: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
-                    .foregroundColor(isCurrent ? .accentColor : .primary)
+                    .font(.body.weight(isCurrent ? .semibold : .regular))
+                    .foregroundColor(isCurrent ? Theme.accent : Theme.textPrimary)
                     .lineLimit(1)
                 if !song.folder.isEmpty {
                     Text(song.folder)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.textSecondary)
                         .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
+            if isCurrent {
+                NowPlayingBars(isAnimating: isPlaying)
+            }
             if isFavorite {
                 Image(systemName: "heart.fill")
                     .font(.caption)
-                    .foregroundColor(.pink)
+                    .foregroundColor(Theme.heart)
             }
             if song.lyricsURL != nil {
                 Image(systemName: "text.quote")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.textSecondary)
             }
             if isInCloud {
                 Image(systemName: "icloud")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.textMuted)
             }
         }
+        .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
 }
 
-private struct MiniPlayerBar: View {
-    @EnvironmentObject private var player: Player
-    let onOpen: () -> Void
+/// 没有封面时的占位：歌名第一个字，底色按文件夹
+struct SongTile: View {
+    let title: String
+    let folder: String
+    let size: CGFloat
 
     var body: some View {
-        VStack(spacing: 0) {
-            MiniProgressLine(progress: player.progress)
-            HStack(spacing: 20) {
-                Text(player.current?.title ?? "")
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button(action: player.togglePlayPause) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                }
-                Button(action: player.next) {
-                    Image(systemName: "forward.fill")
-                }
-            }
-            .font(.title3)
-            .foregroundColor(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onOpen)
-        }
-        .background(.bar)
+        let colors = Theme.tile(for: folder)
+        Text(title.first.map { String($0).uppercased() } ?? "♪")
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundColor(colors.foreground)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.24).fill(colors.background))
     }
 }
 
+/// 正在播放那一行的三根小音波
+struct NowPlayingBars: View {
+    let isAnimating: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.12, paused: !isAnimating)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<3, id: \.self) { bar in
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(width: 3, height: height(of: bar, at: time))
+                }
+            }
+            .frame(height: 14, alignment: .bottom)
+        }
+    }
+
+    private func height(of bar: Int, at time: TimeInterval) -> CGFloat {
+        guard isAnimating else { return [6, 12, 8][bar] }
+        let wave = (sin(time * 6 + Double(bar) * 1.7) + 1) / 2
+        return 4 + 10 * CGFloat(wave)
+    }
+}
+
+struct MiniPlayerBar: View {
+    let song: Song
+    let isPlaying: Bool
+    let progress: PlaybackProgress
+    let onOpen: () -> Void
+    let onTogglePlay: () -> Void
+    let onNext: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Theme.separator)
+                .frame(height: 0.5)
+            MiniProgressLine(progress: progress)
+            HStack(spacing: 12) {
+                SongTile(title: song.title, folder: song.folder, size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(song.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                    if !song.folder.isEmpty {
+                        Text(song.folder)
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button(action: onTogglePlay) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 40, height: 40)
+                }
+                Button(action: onNext) {
+                    Image(systemName: "forward.fill")
+                        .frame(width: 40, height: 40)
+                }
+            }
+            .font(.title3)
+            .foregroundColor(Theme.accent)
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onOpen)
+        }
+        .background(Theme.surface)
+    }
+}
+
+/// 单独观察进度：每秒刷新 5 次，只重绘这一条线
 private struct MiniProgressLine: View {
     @ObservedObject var progress: PlaybackProgress
 
     var body: some View {
         GeometryReader { geometry in
             Rectangle()
-                .fill(Color.accentColor)
+                .fill(Theme.accent)
                 .frame(width: geometry.size.width * fraction)
         }
         .frame(height: 2)

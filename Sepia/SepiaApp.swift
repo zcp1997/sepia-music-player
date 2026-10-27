@@ -15,6 +15,7 @@ struct SepiaApp: App {
             ContentView()
                 .environmentObject(library)
                 .environmentObject(player)
+                .tint(Theme.accent)
         }
     }
 }

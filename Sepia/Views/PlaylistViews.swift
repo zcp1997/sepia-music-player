@@ -17,18 +17,15 @@ struct PlaylistsView: View {
                 Label("新建歌单", systemImage: "plus")
             }
             .disabled(!library.isDataReady)
+            .themedRow()
 
             ForEach(library.data.playlists) { playlist in
                 NavigationLink {
                     PlaylistDetailView(playlistID: playlist.id)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(playlist.name)
-                        Text("\(library.songs(in: playlist).count) 首")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    PlaylistRow(name: playlist.name, count: library.songs(in: playlist).count)
                 }
+                .themedRow()
                 .contextMenu {
                     Button {
                         renameText = playlist.name
@@ -48,6 +45,7 @@ struct PlaylistsView: View {
             }
         }
         .listStyle(.plain)
+        .themedListBackground()
         .alert("新建歌单", isPresented: $isCreating) {
             TextField("歌单名", text: $newName)
             Button("取消", role: .cancel) {}
@@ -67,6 +65,30 @@ struct PlaylistsView: View {
     }
 }
 
+struct PlaylistRow: View {
+    let name: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.accent)
+                .frame(width: 38, height: 38)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Theme.chipBackground))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                Text("\(count) 首")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 /// 歌单内的歌：点击播放（队列 = 歌单），左滑移除，编辑模式拖动排序
 struct PlaylistDetailView: View {
     @EnvironmentObject private var library: Library
@@ -81,6 +103,7 @@ struct PlaylistDetailView: View {
             onMove: { library.reorder(playlistID, to: $0) }
         )
         .navigationTitle(playlist?.name ?? "")
+        .themedNavigationBar()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 EditButton()
@@ -106,6 +129,7 @@ struct PlaylistPicker: View {
                 } label: {
                     Label("新建歌单", systemImage: "plus")
                 }
+                .themedRow()
 
                 ForEach(library.data.playlists) { playlist in
                     let contains = playlist.songs.contains(song.id)
@@ -114,20 +138,23 @@ struct PlaylistPicker: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Text(playlist.name)
-                                .foregroundColor(.primary)
+                            PlaylistRow(name: playlist.name, count: library.songs(in: playlist).count)
                             Spacer()
                             if contains {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(Theme.accent)
                             }
                         }
                     }
                     .disabled(contains)
+                    .themedRow()
                 }
             }
+            .listStyle(.plain)
+            .themedListBackground()
             .navigationTitle("加入歌单")
             .navigationBarTitleDisplayMode(.inline)
+            .themedNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }

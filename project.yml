@@ -43,4 +43,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.zcp.sepia
         TARGETED_DEVICE_FAMILY: "1"
+        # 系统控件（文件选择器、弹窗按钮、开关）的主题色，值同 Theme.accent
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     scheme: {}
