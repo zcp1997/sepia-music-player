@@ -1,11 +1,9 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var library: Library
     @ObservedObject private var cache = HeadCache.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var isPickingFolder = false
 
     var body: some View {
         NavigationStack {
@@ -13,7 +11,9 @@ struct SettingsView: View {
                 Section("音乐文件夹") {
                     LabeledContent("当前", value: library.rootURL?.lastPathComponent ?? "未选择")
                     LabeledContent("歌曲", value: "\(library.songs.count) 首")
-                    Button("更换文件夹") { isPickingFolder = true }
+                    Button("更换文件夹") {
+                        FolderPicker.shared.present { library.setFolder($0) }
+                    }
                     Button(library.isScanning ? "正在扫描…" : "重新扫描") { library.rescan() }
                         .disabled(library.isScanning)
                 }
@@ -51,12 +51,6 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
-                }
-            }
-            .fileImporter(isPresented: $isPickingFolder, allowedContentTypes: [.folder]) { result in
-                switch result {
-                case .success(let url): library.setFolder(url)
-                case .failure(let error): Log.error("选择文件夹失败：\(error)")
                 }
             }
         }

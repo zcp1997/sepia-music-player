@@ -22,7 +22,7 @@
 
 - SwiftUI（iOS 16：`ObservableObject` / `@Published` / `NavigationStack`；**不可用** SwiftData、`@Observable`、`scrollPosition(id:)` 等 iOS 17+ API）
 - AVPlayer 单实例 + 自管队列；AVAudioSession；MediaPlayer（锁屏/控制中心/耳机）
-- 文件夹选择器 + 书签（iOS 用默认 options，`.withSecurityScope` 是 macOS 专用）
+- 文件夹选择器 + 书签（iOS 用默认 options，`.withSecurityScope` 是 macOS 专用）。选择器用 UIKit 的 `UIDocumentPickerViewController`：SwiftUI 的 `fileImporter` 在 iOS 16.6.1 真机上选文件夹时点「打开」无反应、不回调（2026-10-27 真机复现，与 Apple 论坛 thread/775056 描述一致）
 - 歌词列表：`UITableView` + `UIViewRepresentable`（iOS 16 的 SwiftUI ScrollView 拿不到“开始拖/松手”事件）
 - Codable + JSON 持久化
 - XcodeGen（`project.yml` 生成工程，`.xcodeproj` 不入库）
@@ -47,8 +47,10 @@ sepia-music-player/
 │   ├── Player.swift            # AVPlayer、队列、预取、三种起播路径、锁屏控制
 │   ├── LyricsLoader.swift      # 当前歌词：等 iCloud 下载、后台解析
 │   ├── HeadCache.swift         # 头部缓存、预热；HeadCacheSource（AVAssetResourceLoaderDelegate）
+│   ├── FolderPicker.swift      # UIDocumentPickerViewController 选文件夹
 │   ├── Log.swift               # os.Logger + Documents/sepia.log
 │   ├── AppPaths.swift          # Application Support 目录
+│   ├── Assets.xcassets/        # App 图标（单张 1024，由 scripts/make-icon.swift 生成）
 │   └── Views/
 │       ├── ContentView.swift   # 根视图：未选文件夹时显示引导
 │       ├── LibraryView.swift   # [全部|喜欢|歌单] + SongList + 迷你播放条
@@ -59,7 +61,8 @@ sepia-music-player/
 ├── Tests/CoreTests/            # Core 测试（main.swift 驱动，不依赖 XCTest）
 ├── scripts/
 │   ├── test-core.sh            # swiftc 编译并运行 Core 测试（本机与 CI 共用）
-│   └── typecheck.sh            # 借 Mac Catalyst 对整个 App 做 iOS 16 类型检查（仅本机）
+│   ├── typecheck.sh            # 借 Mac Catalyst 对整个 App 做 iOS 16 检查（仅本机）
+│   └── make-icon.swift         # 生成 App 图标
 └── .github/workflows/build.yml
 ```
 

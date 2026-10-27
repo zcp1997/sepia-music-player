@@ -1,24 +1,18 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: Player
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isPickingFolder = false
 
     var body: some View {
         Group {
             if library.rootURL == nil {
-                WelcomeView { isPickingFolder = true }
+                WelcomeView {
+                    FolderPicker.shared.present { library.setFolder($0) }
+                }
             } else {
                 LibraryView()
-            }
-        }
-        .fileImporter(isPresented: $isPickingFolder, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let url): library.setFolder(url)
-            case .failure(let error): Log.error("选择文件夹失败：\(error)")
             }
         }
         .onChange(of: library.songs) { songs in

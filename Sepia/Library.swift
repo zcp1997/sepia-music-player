@@ -12,6 +12,8 @@ final class Library: ObservableObject {
     @Published private(set) var isDataReady = false
 
     private var songsByID: [String: Song] = [:]
+    /// startAccessingSecurityScopedResource 返回 true 才需要配对 stop
+    private var isAccessingRoot = false
     private var dataLoadTimer: Timer?
     private let saveQueue = DispatchQueue(label: "com.zcp.sepia.library-save")
     private let bookmarkKey = "folderBookmark"
@@ -25,9 +27,10 @@ final class Library: ObservableObject {
 
     /// 用户在文件选择器里选了文件夹。安全作用域访问在 App 生命周期内一直保持。
     func setFolder(_ url: URL) {
-        guard url.startAccessingSecurityScopedResource() else {
-            Log.error("无法访问所选文件夹：\(url.path)")
-            return
+        let didStart = url.startAccessingSecurityScopedResource()
+        if !didStart {
+            // 不在沙盒外的位置（如「我的 iPhone」）可能返回 false 但仍可读，继续尝试
+            Log.error("startAccessingSecurityScopedResource 返回 false，仍尝试读取：\(url.path)")
         }
         do {
             let data = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -35,7 +38,8 @@ final class Library: ObservableObject {
         } catch {
             Log.error("保存文件夹书签失败：\(error)")
         }
-        rootURL?.stopAccessingSecurityScopedResource()
+        if isAccessingRoot { rootURL?.stopAccessingSecurityScopedResource() }
+        isAccessingRoot = didStart
         rootURL = url
         songs = []
         Log.info("选择文件夹：\(url.path)")
@@ -77,10 +81,11 @@ final class Library: ObservableObject {
         do {
             var isStale = false
             let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
-            guard url.startAccessingSecurityScopedResource() else {
-                Log.error("文件夹授权已失效，需要重新选择")
-                return
+            isAccessingRoot = url.startAccessingSecurityScopedResource()
+            if !isAccessingRoot {
+                Log.error("恢复文件夹授权时 startAccessingSecurityScopedResource 返回 false，仍尝试读取：\(url.path)")
             }
+            Log.info("恢复文件夹：\(url.path)")
             if isStale, let fresh = try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil) {
                 UserDefaults.standard.set(fresh, forKey: bookmarkKey)
             }
