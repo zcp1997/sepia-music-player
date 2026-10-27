@@ -39,6 +39,10 @@ struct LibraryView: View {
         }
         // 新建歌单的输入框弹出键盘时，播放条不跟着顶上来
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        // 排查「偶尔切分页没反应」：和 SegmentedTabs 里的「点击分页」对照，看点击送到了没有、状态更新了没有
+        .onChange(of: tab) { Log.info("已切到分页：\($0.title)") }
+        .onChange(of: isShowingPlayer) { Log.info($0 ? "打开播放页" : "收起播放页") }
+        .onChange(of: isShowingSettings) { Log.info($0 ? "打开设置" : "关闭设置") }
         .sheet(isPresented: $isShowingPlayer) {
             PlayerView()
                 .environmentObject(library)
@@ -109,6 +113,7 @@ struct SegmentedTabs: View {
             ForEach(LibraryTab.allCases, id: \.self) { tab in
                 let isSelected = tab == selection
                 Button {
+                    Log.info("点击分页：\(tab.title)")
                     selection = tab
                 } label: {
                     Text(tab.title)
@@ -205,6 +210,7 @@ struct SongList: View {
                 .contextMenu {
                     Group {
                         Button {
+                            Log.info("长按菜单：\(library.isFavorite(song) ? "取消喜欢" : "喜欢") \(song.id)")
                             library.toggleFavorite(song)
                         } label: {
                             if library.isFavorite(song) {
@@ -214,6 +220,7 @@ struct SongList: View {
                             }
                         }
                         Button {
+                            Log.info("长按菜单：加入歌单 \(song.id)")
                             songToAdd = song
                         } label: {
                             Label("加入歌单…", systemImage: "text.badge.plus")
@@ -245,7 +252,11 @@ struct SongList: View {
 
     private var deleteAction: ((IndexSet) -> Void)? {
         guard let onDelete else { return nil }
-        return { offsets in onDelete(offsets.map { songs[$0] }) }
+        return { offsets in
+            let removed = offsets.map { songs[$0] }
+            Log.info("左滑删除：\(removed.map(\.id).joined(separator: "、"))")
+            onDelete(removed)
+        }
     }
 
     private var moveAction: ((IndexSet, Int) -> Void)? {

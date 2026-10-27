@@ -11,6 +11,7 @@ struct PlaylistsView: View {
     var body: some View {
         List {
             Button {
+                Log.info("弹出新建歌单")
                 newName = ""
                 isCreating = true
             } label: {
@@ -28,12 +29,14 @@ struct PlaylistsView: View {
                 .themedRow()
                 .contextMenu {
                     Button {
+                        Log.info("长按菜单：重命名歌单 \(playlist.name)")
                         renameText = playlist.name
                         renamingID = playlist.id
                     } label: {
                         Label("重命名", systemImage: "pencil")
                     }
                     Button(role: .destructive) {
+                        Log.info("长按菜单：删除歌单 \(playlist.name)")
                         library.deletePlaylist(playlist.id)
                     } label: {
                         Label("删除", systemImage: "trash")
@@ -41,7 +44,9 @@ struct PlaylistsView: View {
                 }
             }
             .onDelete { offsets in
-                offsets.map { library.data.playlists[$0].id }.forEach(library.deletePlaylist)
+                let removed = offsets.map { library.data.playlists[$0] }
+                Log.info("左滑删除歌单：\(removed.map(\.name).joined(separator: "、"))")
+                removed.map(\.id).forEach(library.deletePlaylist)
             }
         }
         .listStyle(.plain)
@@ -109,6 +114,8 @@ struct PlaylistDetailView: View {
                 EditButton()
             }
         }
+        .onAppear { Log.info("进入歌单：\(playlist?.name ?? "?")") }
+        .onDisappear { Log.info("离开歌单：\(playlist?.name ?? "?")") }
     }
 }
 

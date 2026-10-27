@@ -21,9 +21,11 @@ struct ContentView: View {
         .onChange(of: scenePhase) { phase in
             switch phase {
             case .active:
+                Log.info("回到前台")
                 // 回到前台时文件夹里可能有新歌
                 if !library.isScanning { library.rescan() }
             case .background:
+                Log.info("进入后台")
                 player.savePosition()
             default:
                 break
