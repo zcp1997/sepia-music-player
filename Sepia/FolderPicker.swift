@@ -1,8 +1,8 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// 选择音乐文件夹。用 UIKit 的 UIDocumentPickerViewController，不用 SwiftUI 的 fileImporter：
-/// 后者在 iOS 16 真机 iPhone 上选文件夹时，点「打开」可能既不关闭也不回调。
+/// 选择音乐文件夹（UIDocumentPickerViewController）。
+/// 若点「打开」后既不关闭也不回调，多半是 App 签名里缺 application-identifier，见 ci/Sepia.entitlements。
 @MainActor
 final class FolderPicker: NSObject, UIDocumentPickerDelegate {
     static let shared = FolderPicker()

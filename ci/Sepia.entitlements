@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  CI 打包前临时签名（codesign -s -）时写进二进制的 entitlements。
+  TrollStore 安装时原样保留它们；没有 application-identifier 时，系统文件选择器
+  无法把文件夹权限发给 App（点「打开」无反应）。其他自签工具会用自己的描述文件覆盖。
+  Team ID 是占位值（10 位大写字母数字）。
+-->
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>SEPIA00000.com.zcp.sepia</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>SEPIA00000</string>
+</dict>
+</plist>

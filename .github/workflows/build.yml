@@ -50,10 +50,15 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             SEPIA_COMMIT=${GITHUB_SHA::7}
 
-      - name: Package IPA
+      - name: Ad-hoc sign and package IPA
         id: ipa
         run: |
           APP=build/Build/Products/Release-iphoneos/Sepia.app
+          # TrollStore 原样保留二进制自带的 entitlements，完全不签名就没有 application-identifier，
+          # 系统文件选择器点「打开」会无反应。其他自签工具会用自己的签名覆盖这一步
+          codesign --force --sign - --entitlements ci/Sepia.entitlements --timestamp=none "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E '^(Identifier|Signature)='
+          codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -p -
           /usr/libexec/PlistBuddy -c Print "$APP/Info.plist" \
             | grep -E 'CFBundle(Identifier|ShortVersionString|Version) |MinimumOSVersion|SepiaCommit'
           mkdir -p Payload

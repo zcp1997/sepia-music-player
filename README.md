@@ -3,7 +3,7 @@
 极简的 iOS 本地音乐播放器：播放你自己 iCloud 云盘文件夹里的音乐和歌词。不接入任何音乐平台，App 本身不发任何网络请求。
 
 - 最低 iOS 16.0，仅 iPhone
-- 由 GitHub Actions 编译出**未签名**的 IPA，自行签名安装
+- 由 GitHub Actions 编译出只做了临时签名（ad-hoc）的 IPA，自行签名安装（TrollStore 或其他自签工具）
 - 零第三方依赖（SwiftUI + AVFoundation）
 
 ## 功能
@@ -37,6 +37,11 @@ iCloud 云盘/Music/
 1. 打开仓库的 [Actions](https://github.com/zcp1997/sepia-music-player/actions) → 最新一次成功的 **Build IPA**
 2. 在页面底部 Artifacts 下载 `Sepia-<序号>-<commit>.ipa`（需要登录 GitHub）
 3. 用你的自签工具签名安装。**保持 Bundle ID `com.zcp.sepia` 不变**，这样是覆盖安装，App 里的数据不会丢
+
+关于签名：CI 在打包前用 `codesign -s -` 做一次临时签名，写入 [`ci/Sepia.entitlements`](ci/Sepia.entitlements) 里的 `application-identifier`。
+
+- **TrollStore** 会原样保留这些 entitlements。如果没有它们，系统的文件选择器无法把文件夹权限交给 App，表现为点「打开」没有反应。
+- **Sideloadly、AltStore、ESign 等重签工具**会换成自己描述文件里的 entitlements，不受影响。
 
 App 启动页和「设置」里显示 `v版本 (构建序号) · commit`，用来确认装的是哪一版。
 

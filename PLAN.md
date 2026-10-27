@@ -8,7 +8,7 @@
 |---|---|
 | 系统 | 最低 iOS 16.0（测试机 iOS 16.6.1），仅 iPhone，竖屏 |
 | Bundle ID | `com.zcp.sepia`，固定不变（重签时保持一致才能覆盖安装、不丢数据） |
-| 安装 | CI 产出**无签名** IPA，用户自行自签安装 |
+| 安装 | CI 产出临时签名（ad-hoc，带 `application-identifier`）的 IPA，用户用 TrollStore 安装 |
 | 构建 | 本机不装 Xcode，GitHub Actions 是唯一构建途径；仓库公开 |
 | 网络 | App 进程零网络请求、无任何网络代码；iCloud 下载由系统完成 |
 | 字幕 | 支持 SRT 与 LRC；同名同时存在时 **SRT 优先** |
@@ -22,7 +22,7 @@
 
 - SwiftUI（iOS 16：`ObservableObject` / `@Published` / `NavigationStack`；**不可用** SwiftData、`@Observable`、`scrollPosition(id:)` 等 iOS 17+ API）
 - AVPlayer 单实例 + 自管队列；AVAudioSession；MediaPlayer（锁屏/控制中心/耳机）
-- 文件夹选择器 + 书签（iOS 用默认 options，`.withSecurityScope` 是 macOS 专用）。选择器用 UIKit 的 `UIDocumentPickerViewController`：SwiftUI 的 `fileImporter` 在 iOS 16.6.1 真机上选文件夹时点「打开」无反应、不回调（2026-10-27 真机复现，与 Apple 论坛 thread/775056 描述一致）
+- 文件夹选择器 + 书签（iOS 用默认 options，`.withSecurityScope` 是 macOS 专用）。选择器用 UIKit 的 `UIDocumentPickerViewController`（Apple「访问目录」文档推荐）。点「打开」无反应的真正原因见第 5 节「为什么要临时签名」：改用 UIKit 后仍复现，所以不是 SwiftUI `fileImporter` 的问题
 - 歌词列表：`UITableView` + `UIViewRepresentable`（iOS 16 的 SwiftUI ScrollView 拿不到“开始拖/松手”事件）
 - Codable + JSON 持久化
 - XcodeGen（`project.yml` 生成工程，`.xcodeproj` 不入库）
@@ -161,7 +161,8 @@ sepia-music-player/
 - Workflow（`.github/workflows/build.yml`）：
   - 触发：push 到 `main` + 手动触发。
   - `macos-26` runner，固定 `/Applications/Xcode_26.6.app`（升级时改这一行）。
-  - 步骤：Core 测试 → `xcodegen generate` → `xcodebuild` 不签名编译 → 打包 `Payload/Sepia.app` → 上传 `Sepia-<run>-<commit>.ipa`（`archive: false`，下载即 `.ipa`，不套 zip）。
+  - 步骤：Core 测试 → `xcodegen generate` → `xcodebuild` 不签名编译 → `codesign -s -` 临时签名并写入 `ci/Sepia.entitlements` → 打包 `Payload/Sepia.app` → 上传 `Sepia-<run>-<commit>.ipa`（`archive: false`，下载即 `.ipa`，不套 zip）。
+  - 为什么要临时签名：TrollStore 安装时原样保留二进制自带的 entitlements、不会补。完全不签名的包装上后没有 `application-identifier`，系统文件选择器（iCloud 和「我的 iPhone」都一样）点「打开」后不回调 App（2026-10-27 真机：日志只有“打开文件夹选择器”，没有返回或取消）。备用方案：给 TrollStore 版加 `com.apple.private.security.no-sandbox`，直接读 iCloud 云盘的本地路径，绕过选择器。
 - 本机（推送前必跑）：
   - `scripts/test-core.sh`：SwiftPM 因 Command Line Tools 不匹配不可用，改用 `swiftc` 直接编译测试程序。
   - `scripts/typecheck.sh`：用 macOS 26.5 SDK 里的 Mac Catalyst 框架按 `arm64-apple-ios16.0-macabi` 类型检查整个 App，能抓到语法/类型错误和 iOS 17+ API 误用。macOS 27 SDK 的 SwiftUI 把 `@State` 等改成了宏，CLT 缺插件，所以固定 26.5。
