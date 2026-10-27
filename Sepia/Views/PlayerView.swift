@@ -11,7 +11,7 @@ struct PlayerView: View {
         VStack(spacing: 18) {
             PlayerHeader(song: player.current) { dismiss() }
 
-            LyricsView(lyrics: player.lyrics, progress: player.progress) { time in
+            LyricsView(lyrics: player.lyrics, progress: player.progress, isPlaying: player.isPlaying) { time in
                 // 网易云式：点歌词旁的 ▶ 跳到那句并开始播放
                 player.seek(to: time)
                 if !player.isPlaying { player.resume() }

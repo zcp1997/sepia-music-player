@@ -4,25 +4,48 @@ import UIKit
 struct LyricsView: View {
     @ObservedObject var lyrics: LyricsLoader
     @ObservedObject var progress: PlaybackProgress
+    /// 没有歌词时，波形跟着播放 / 暂停变化
+    let isPlaying: Bool
     let onSeek: (TimeInterval) -> Void
 
     var body: some View {
         switch lyrics.state {
         case .none:
-            message("暂无歌词")
+            WaveVisualizer(isPlaying: isPlaying)
         case .loading:
-            message("正在加载歌词…")
-        case .failed:
-            message("歌词加载失败")
+            Text("正在加载歌词…")
+                .foregroundColor(Color(uiColor: PlayerPalette.muted))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let reason):
+            LyricsFailedView(reason: reason, isPlaying: isPlaying, onRetry: lyrics.retry)
         case .loaded(let lines):
             LyricsTable(lines: lines, time: progress.currentTime, onSeek: onSeek)
         }
     }
+}
 
-    private func message(_ text: String) -> some View {
-        Text(text)
-            .foregroundColor(Color(uiColor: PlayerPalette.muted))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+/// 歌词加载失败的兜底：照样显示波形，下面说明原因，可以重新加载
+struct LyricsFailedView: View {
+    let reason: String
+    let isPlaying: Bool
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            WaveVisualizer(isPlaying: isPlaying)
+            Text(reason)
+                .font(.footnote)
+                .foregroundColor(Color(uiColor: PlayerPalette.muted))
+            Button(action: onRetry) {
+                Label("重新加载", systemImage: "arrow.clockwise")
+                    .font(.footnote.weight(.medium))
+                    .foregroundColor(Color(uiColor: PlayerPalette.amber))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .overlay(Capsule().stroke(Color(uiColor: PlayerPalette.track), lineWidth: 1))
+            }
+            .padding(.bottom, 8)
+        }
     }
 }
 

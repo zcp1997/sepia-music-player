@@ -79,6 +79,9 @@ struct HomePreview: View {
 }
 
 struct PlayerPreview: View {
+    enum Middle { case lyrics, wave, failed }
+    var middle = Middle.lyrics
+
     let lines: [(String, String?, LyricStyle)] = [
         ("风吹过旧城的屋檐", nil, .normal),
         ("我提着灯走过从前", nil, .normal),
@@ -89,26 +92,38 @@ struct PlayerPreview: View {
 
     enum LyricStyle { case normal, current }
 
+    /// 歌词表格是 UITableView，渲染器画不出来，用同样的字号和配色排一遍
+    private var lyricsBlock: some View {
+        VStack(spacing: 20) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                let isCurrent = line.2 == .current
+                VStack(spacing: 4) {
+                    Text(line.0)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color(uiColor: isCurrent ? PlayerPalette.highlight : PlayerPalette.muted))
+                    if let translation = line.1 {
+                        Text(translation)
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(uiColor: isCurrent ? PlayerPalette.amber : PlayerPalette.muted))
+                    }
+                }
+                .scaleEffect(isCurrent ? 1.08 : 1)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 18) {
             PlayerHeader(song: songs[0]) {}
-            VStack(spacing: 20) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    let isCurrent = line.2 == .current
-                    VStack(spacing: 4) {
-                        Text(line.0)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(Color(uiColor: isCurrent ? PlayerPalette.highlight : PlayerPalette.muted))
-                        if let translation = line.1 {
-                            Text(translation)
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(uiColor: isCurrent ? PlayerPalette.amber : PlayerPalette.muted))
-                        }
-                    }
-                    .scaleEffect(isCurrent ? 1.08 : 1)
-                }
+            switch middle {
+            case .lyrics:
+                lyricsBlock.frame(maxHeight: .infinity)
+            case .wave:
+                WaveVisualizer(isPlaying: true).frame(maxHeight: .infinity)
+            case .failed:
+                LyricsFailedView(reason: "歌词下载超时，请检查网络", isPlaying: true, onRetry: {})
+                    .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
             PlayerActions(isFavorite: true, canEdit: true, mode: .shuffle, onFavorite: {}, onMode: {}, onAdd: {})
             PlaybackScrubber(progress: progress) { _ in }
             PlayerControls(isPlaying: true, onPrevious: {}, onTogglePlay: {}, onNext: {})
@@ -138,6 +153,8 @@ MainActor.assumeIsolated {
     render(HomePreview(), scheme: .light, to: "\(output)/home-light.png")
     render(HomePreview(), scheme: .dark, to: "\(output)/home-dark.png")
     render(PlayerPreview(), scheme: .light, to: "\(output)/player.png")
+    render(PlayerPreview(middle: .wave), scheme: .light, to: "\(output)/player-wave.png")
+    render(PlayerPreview(middle: .failed), scheme: .light, to: "\(output)/player-failed.png")
     render(WelcomeView {}, scheme: .light, to: "\(output)/welcome-light.png")
     render(WelcomeView {}.frame(width: width, height: height), scheme: .dark, to: "\(output)/welcome-dark.png")
 }

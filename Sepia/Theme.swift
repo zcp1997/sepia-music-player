@@ -85,6 +85,8 @@ enum PlayerPalette {
     static let amber = UIColor(hex: 0xE8C9A4)
     /// 进度条底、胶囊边框
     static let track = UIColor(hex: 0x6B5443)
+    /// 波形的第三层
+    static let clay = UIColor(hex: 0xC98B5E)
     static let heart = UIColor(hex: 0xE8A08C)
 }
 

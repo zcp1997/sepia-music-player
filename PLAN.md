@@ -41,7 +41,9 @@ sepia-music-player/
 │   │   ├── LibraryScanner.swift# 递归扫描、iCloud 占位文件、字幕匹配
 │   │   ├── CloudFile.swift     # iCloud 下载状态、触发下载、等待下载完成
 │   │   ├── LyricsParser.swift  # LyricLine；SRT + LRC 解析、编码识别、当前行定位
-│   │   └── LibraryFile.swift   # Playlist / LibraryData；sepia-library.json 编解码与编辑操作
+│   │   ├── LibraryFile.swift   # Playlist / LibraryData；sepia-library.json 编解码与编辑操作
+│   │   ├── PlayOrder.swift     # 播放模式与播放顺序、文件夹标签
+│   │   └── WaveMotion.swift    # 波形动画的能量缓动与曲线形状
 │   ├── Library.swift           # 文件夹授权、书签、扫描、保持全部在本机；喜欢 / 歌单的读写与合并
 │   ├── Player.swift            # AVPlayer、队列、预取、锁屏控制
 │   ├── LyricsLoader.swift      # 当前歌词：等 iCloud 下载、后台解析
@@ -55,7 +57,8 @@ sepia-music-player/
 │       ├── LibraryView.swift   # [全部|喜欢|歌单] + SongList + 迷你播放条
 │       ├── PlaylistViews.swift # 歌单列表、歌单详情、加入歌单
 │       ├── PlayerView.swift    # 播放页：歌词、♥、加入歌单、进度条、控制
-│       ├── LyricsView.swift    # 网易云式歌词（UITableView 封装）
+│       ├── LyricsView.swift    # 网易云式歌词（UITableView 封装）、加载失败兜底
+│       ├── WaveVisualizer.swift# 没有歌词时的流动波浪
 │       └── SettingsView.swift  # 文件夹、保持全部歌曲在本机、版本
 ├── Tests/CoreTests/            # Core 测试（main.swift 驱动，不依赖 XCTest）
 ├── scripts/
@@ -214,6 +217,14 @@ M2–M5 已推送（2026-10-27）。真机：TrollStore 安装需临时签名（
   - [ ] 浅色、深色模式下主页、歌单、设置、引导页配色正常，文字清楚
   - [ ] 播放页在两种模式下都是深棕；当前句放大不跳行；拖动歌词的中线和 ▶ 看得清
   - [ ] 进度条拖动、点按跳转都正常；系统弹窗、文件选择器、开关是琥珀棕
+
+### 没有歌词时的流动波浪（2026-10-27）
+- 四条暖色正弦曲线叠加、两端收细（`Core/WaveMotion.swift` 算形状，`Views/WaveVisualizer.swift` 用 `Canvas` + `TimelineView` 画）。不读真实音频。
+- 播放时能量 1、暂停时 0.12，切换按指数缓动约 1 秒；相位对能量积分，切换时波形不跳。暂停时降到 30 帧省电。
+- 歌词状态：无歌词文件 → 波形；加载中 → “正在加载歌词…”；失败（下载超时 / 读不到文件 / 没有可用时间轴）→ 波形 + 原因 +「重新加载」。
+- 真机验证：
+  - [ ] 没有歌词的歌显示波形，播放时流动，暂停后约 1 秒平静、只剩缓慢起伏，再播放恢复
+  - [ ] 歌词加载失败时显示原因，点「重新加载」能重试
 
 ### 想法：CarPlay（暂不开发，2026-10-27 决定）
 - 需要 entitlement `com.apple.developer.carplay-audio`。这个权限正常要向 Apple 申请；TrollStore 会原样保留我们写进 `ci/Sepia.entitlements` 的 entitlements，所以可以自己加，但车机系统认不认没有验证过。

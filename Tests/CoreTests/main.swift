@@ -28,6 +28,9 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("播放顺序边界", testPlayOrderEdgeCases),
     ("播放模式切换", testPlayModeCycle),
     ("文件夹标签", testFolderTags),
+    ("波形能量缓动", testWaveEnergyEasing),
+    ("波形相位连续", testWavePhaseContinuity),
+    ("波形形状", testWaveOffsetShape),
 ]
 
 for test in tests {
